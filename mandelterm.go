@@ -6,6 +6,8 @@ import (
 	"github.com/nsf/termbox-go"
 	"log"
 	"math/cmplx"
+	"runtime"
+	"sync"
 	"time"
 )
 
@@ -55,26 +57,46 @@ func Printf(x, y int, fg, bg termbox.Attribute, format string, args ...interface
 
 // Help
 func Help() {
-	Print(5, 4, termbox.ColorRed, termbox.ColorWhite, "Terminal Mandlebrot by Nick Craig-Wood")
-	Print(5, 6, termbox.ColorBlack, termbox.ColorWhite, "* Arrow keys to Move")
-	Print(5, 7, termbox.ColorBlack, termbox.ColorWhite, "* PgUp/PdDown/+/- to zoom")
-	Print(5, 8, termbox.ColorBlack, termbox.ColorWhite, "* [/] to change depth")
-	Print(5, 9, termbox.ColorBlack, termbox.ColorWhite, "* h toggle help on and off")
-	Print(5, 10, termbox.ColorBlack, termbox.ColorWhite, "* i toggle info on and off")
-	Print(5, 11, termbox.ColorBlack, termbox.ColorWhite, "* q/ESC/c-C to quit")
-	Print(5, 12, termbox.ColorBlack, termbox.ColorWhite, "* r to reset to start")
+	Print(0, 0, termbox.ColorRed, termbox.ColorWhite, "Terminal Mandlebrot by Nick Craig-Wood")
+	Print(0, 1, termbox.ColorBlack, termbox.ColorWhite, "* Arrow keys to Move")
+	Print(0, 2, termbox.ColorBlack, termbox.ColorWhite, "* PgUp/PdDown/+/- to zoom")
+	Print(0, 3, termbox.ColorBlack, termbox.ColorWhite, "* [/] to change depth")
+	Print(0, 4, termbox.ColorBlack, termbox.ColorWhite, "* h toggle help on and off")
+	Print(0, 5, termbox.ColorBlack, termbox.ColorWhite, "* i toggle info on and off")
+	Print(0, 6, termbox.ColorBlack, termbox.ColorWhite, "* q/ESC/c-C to quit")
+	Print(0, 7, termbox.ColorBlack, termbox.ColorWhite, "* r to reset to start")
 }
 
 // Info
 func Info(dt time.Duration) {
-	Printf(0, 0, termbox.ColorBlack, termbox.ColorWhite, "c = %g, r = %g, Depth %d, rendered in %s", center, radius, depth, dt)
+	_, h := termbox.Size()
+	Printf(0, h-1, termbox.ColorBlack, termbox.ColorWhite, "c = %g, r = %g, Depth %d, rendered in %s", center, radius, depth, dt)
+}
+
+// Plot a horizontal line from the mandelbrot set
+func calculateLine(fx, fy, dx float64, line []termbox.Attribute, wg *sync.WaitGroup) {
+	defer wg.Done()
+	for x := range line {
+		z := complex(0, 0)
+		c := complex(fx, fy)
+		var i int
+		for i = 0; i < depth; i++ {
+			if cmplx.Abs(z) >= 2 {
+				break
+			}
+			z = z*z + c
+		}
+		line[x] = termbox.Attribute(i%8) + 1
+		fx += dx
+	}
 }
 
 // Draw the mandelbrot set
 func Draw() {
 	start := time.Now()
 	w, h := termbox.Size()
-	// Choose shortest direction for reference
+
+	// Choose shortest direction for radius
 	var dx, dy float64
 	if float64(h) > float64(w)/aspect {
 		dx = 2 * radius / float64(w)
@@ -84,25 +106,26 @@ func Draw() {
 		dy = 2 * radius / float64(h)
 	}
 
-	// FIXME aspect ratio
-	termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
+	// Calculate mandelbrot into screen
+	screen := make([][]termbox.Attribute, h)
 	fy := imag(center) + dy*float64(-h/2)
-	for y := 0; y < h; y++ {
+	var wg sync.WaitGroup
+	for y := range screen {
 		fx := real(center) + dx*float64(-w/2)
-		for x := 0; x < w; x++ {
-			z := complex(0, 0)
-			c := complex(fx, fy)
-			var i int
-			for i = 0; i < depth; i++ {
-				if cmplx.Abs(z) >= 2 {
-					break
-				}
-				z = z*z + c
-			}
-			termbox.SetCell(x, y, ' ', termbox.ColorDefault, termbox.Attribute(i%8)+1)
-			fx += dx
-		}
+		screen[y] = make([]termbox.Attribute, w)
+		wg.Add(1)
+		go calculateLine(fx, fy, dx, screen[y], &wg)
 		fy += dy
+
+	}
+	wg.Wait()
+
+	// Plot
+	termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
+	for y := range screen {
+		for x, col := range screen[y] {
+			termbox.SetCell(x, y, ' ', termbox.ColorDefault, col)
+		}
 	}
 	if showInfo {
 		Info(time.Now().Sub(start))
@@ -114,6 +137,7 @@ func Draw() {
 }
 
 func main() {
+	runtime.GOMAXPROCS(runtime.NumCPU())
 	err := termbox.Init()
 	if err != nil {
 		log.Fatal(err)
