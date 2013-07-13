@@ -1,0 +1,53 @@
+#!/bin/echo Source this file don't run it
+# Cross compile all the architectures using
+# http://dave.cheney.net/2012/09/08/an-introduction-to-cross-compilation-with-go
+
+rm -rf build
+mkdir -p build
+mkdir -p build/osx
+mkdir -p build/windows
+mkdir -p build/freebsd/386
+mkdir -p build/freebsd/amd64
+mkdir -p build/linux/386
+mkdir -p build/linux/amd64
+mkdir -p build/linux/arm
+
+cat <<'#EOF' > build/README.txt
+This directory contains builds of the mandelterm program.
+
+Mandelterm is a fun program to show low resolution Mandelbrot sets in your terminal.
+
+See the project website here: https://github.com/ncw/mandelterm for
+more details.
+
+The files in this directory are organised by OS and processor type
+
+#EOF
+
+#echo darwin-386
+#go-darwin-386 build -o build/osx/386/mandelterm
+
+echo OSX
+go-darwin-amd64 build -o build/osx/mandelterm
+
+echo freebsd-386
+go-freebsd-386 build -o build/freebsd/386/mandelterm
+
+echo freebsd-amd64
+go-freebsd-amd64 build -o build/freebsd/amd64/mandelterm
+
+echo linux-386
+go-linux-386 build -o build/linux/386/mandelterm
+
+echo linux-amd64
+go-linux-amd64 build -o build/linux/amd64/mandelterm
+
+echo linux-arm
+go-linux-arm build -o build/linux/arm/mandelterm
+
+echo windows-386
+go-windows-386 build -o build/windows/mandelterm.exe
+
+#go-windows-amd64 build
+
+( cd build ; tree . >> README.txt )
